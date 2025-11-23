@@ -16,6 +16,8 @@ import matplotlib.pyplot as plt
 
 from utils.config_loader import load_rating_scales
 from utils.data_persistence import save_rating, get_rated_videos_for_user
+from utils.video_rating_display import display_video_rating_interface
+from utils.gdrive_manager import get_all_video_filenames, get_video_path
 
 def stratified_sample_videos(videos_to_rate, df_metadata, number_of_videos, strat_config):
     """
@@ -149,13 +151,16 @@ def _stratified_sample_recursive(df, strat_config, target_count, level):
 def display_video_with_mode(video_file_path, playback_mode='loop'):
     """
     Display video with specified playback mode.
+    Handles both local and Google Drive video sources.
 
     Parameters:
-    - video_file_path: Path to the video file
+    - video_file_path: Path to the video file (local or from Google Drive cache)
     - playback_mode: 'loop' or 'once'
         - 'loop': Autoplay, loop enabled, controls visible
         - 'once': Autoplay, no loop, no controls (plays once only)
     """
+    # For Google Drive videos, video_file_path will be a temp path that already exists
+    # For local videos, check if file exists
     if not os.path.exists(video_file_path):
         st.error(f"Video file not found: {video_file_path}")
         return
@@ -236,26 +241,47 @@ def initialize_video_player(config):
     """Initialize video player state - load videos, metadata, and rating scales."""
     user = st.session_state.user
 
-    # Load rating scales
-    st.session_state.rating_scales = load_rating_scales(config)
+    # Load rating scales (now returns dict with scales, groups, and requirements)
+    rating_data = load_rating_scales(config)
+    st.session_state.rating_scales = rating_data['scales']
+    st.session_state.rating_groups = rating_data['groups']
+    st.session_state.group_requirements = rating_data['group_requirements']
 
-    # Track which scales are required
+    # Track which scales are required individually (not in a group)
     st.session_state.required_scales = [
         scale.get('title') for scale in st.session_state.rating_scales
-        if scale.get('required_to_proceed', True)
+        if scale.get('required_to_proceed', True) and not scale.get('group')
     ]
 
     # Get configuration
     metadata_path = config['paths']['metadata_path']
-    video_path = config['paths']['video_path']
+    video_source = config['paths'].get('video_source', 'local')
     min_ratings_per_video = config['settings']['min_ratings_per_video']
 
-    # Get all video files
-    try:
-        all_videos = [f for f in os.listdir(video_path) if f.lower().endswith('.mp4')]
-    except FileNotFoundError:
-        st.error(f"Video directory not found: {video_path}")
-        all_videos = []
+    # Get all video files based on source
+    if video_source == 'gdrive':
+        # Get videos from Google Drive
+        try:
+            folder_id = st.secrets["gdrive"]["video_folder_id"]
+            all_videos = get_all_video_filenames(folder_id)
+            print(f"[INFO] Loaded {len(all_videos)} videos from Google Drive")
+            # Store folder_id for later use
+            st.session_state.gdrive_folder_id = folder_id
+            st.session_state.video_source = 'gdrive'
+        except Exception as e:
+            st.error(f"Failed to load videos from Google Drive: {e}")
+            print(f"[ERROR] Google Drive error: {e}")
+            all_videos = []
+    else:
+        # Get videos from local filesystem
+        video_path = config['paths']['video_path']
+        try:
+            all_videos = [f for f in os.listdir(video_path) if f.lower().endswith('.mp4')]
+            st.session_state.video_path = video_path
+            st.session_state.video_source = 'local'
+        except FileNotFoundError:
+            st.error(f"Video directory not found: {video_path}")
+            all_videos = []
 
     # Filter out videos already rated by this user
     videos_rated_by_user = get_rated_videos_for_user(user.user_id)
@@ -320,7 +346,7 @@ def initialize_video_player(config):
     # Store in session state
     st.session_state.videos_to_rate = videos_to_rate
     st.session_state.current_video_index = 0
-    st.session_state.video_path = video_path
+    # Note: video_path or gdrive_folder_id already set above based on video_source
 
     # Filter metadata to only selected videos
     if not df_metadata.empty:
@@ -333,160 +359,51 @@ def initialize_video_player(config):
 def display_rating_interface(action_id, video_filename, config):
     """Display the main rating interface with video and scales."""
     user = st.session_state.user
-    video_path = st.session_state.video_path
     metadata = st.session_state.metadata
     rating_scales = st.session_state.rating_scales
+    video_source = st.session_state.get('video_source', 'local')
 
-    # Display options from config
-    display_metadata = config['settings'].get('display_metadata', True)
-    display_pitch = config['settings'].get('display_pitch', True)
-    video_playback_mode = config['settings'].get('video_playback_mode', 'loop')
+    # Get video path based on source
+    if video_source == 'gdrive':
+        # For Google Drive, download the video and get temp path
+        folder_id = st.session_state.gdrive_folder_id
+        video_file_path = get_video_path(video_filename, folder_id)
 
-    #st.title("⚽ Video Rating")
+        if not video_file_path:
+            st.error(f"⚠️ Failed to load video from Google Drive: {video_filename}")
+            st.warning("This video could not be loaded due to a network error. You can skip this video and continue with the next one.")
 
-    # Top metadata bar (if enabled)
-    if display_metadata and not metadata.empty:
-        row = metadata[metadata['id'] == action_id]
-        if not row.empty:
-            # Get metadata fields to display from config
-            metadata_to_show = config['settings'].get('metadata_to_show', [])
+            # Add skip button
+            col1, col2, col3 = st.columns([1, 1, 1])
+            with col2:
+                if st.button("Skip to Next Video", use_container_width=True, type="primary"):
+                    # Move to next video
+                    st.session_state.current_video_index = st.session_state.get('current_video_index', 0) + 1
+                    st.rerun()
 
-            if metadata_to_show:
-                # Create columns dynamically based on number of metadata fields
-                cols = st.columns(len(metadata_to_show))
+            return {}
 
-                # Display each metadata field
-                for idx, field_config in enumerate(metadata_to_show):
-                    label = field_config.get('label', '')
-                    column = field_config.get('column', '')
-
-                    # Check if column exists in metadata
-                    if column and column in row.columns:
-                        with cols[idx]:
-                            st.metric(label, row[column].values[0])
-
-    st.markdown("---")
-
-    # Video and pitch visualization area
-    if display_pitch and not metadata.empty:
-        # Show video and pitch side by side
-        col_video, col_pitch = st.columns([55, 45])
-
-        with col_video:
-          #  st.markdown("### Video")
-            video_file = os.path.join(video_path, video_filename)
-            display_video_with_mode(video_file, video_playback_mode)
-
-        with col_pitch:
-           # st.markdown("### Pitch Visualization")
-            # Generate pitch visualization
-            row = metadata[metadata['id'] == action_id]
-            if not row.empty:
-                try:
-                    import mplsoccer
-                    pitch = mplsoccer.Pitch(pitch_type="statsbomb", pitch_color="grass")
-                    fig, ax = pitch.draw(figsize=(6, 4))
-
-                    fig.patch.set_facecolor('black')
-                    fig.patch.set_alpha(1)
-
-                    # Draw arrow
-                    start_x = row.start_x.values[0]
-                    start_y = row.start_y.values[0]
-                    end_x = row.end_x.values[0]
-                    end_y = row.end_y.values[0]
-
-                    pitch.arrows(start_x, start_y, end_x, end_y,
-                                ax=ax, color="blue", width=2, headwidth=10, headlength=5)
-                    ax.plot(start_x, start_y, 'o', color='blue', markersize=10)
-
-                    fig.tight_layout(pad=0)
-                    fig.subplots_adjust(left=0, right=1, top=1, bottom=0)
-
-                    st.pyplot(fig)
-                    plt.close(fig)
-                except Exception as e:
-                    st.error(f"Failed to generate pitch visualization: {e}")
-            else:
-                st.info("No metadata available for this video")
-
+        # For Google Drive, pass the parent directory of the temp file
+        # This maintains compatibility with display_video_rating_interface
+        video_path = os.path.dirname(video_file_path)
+        # Override filename to just the basename
+        video_filename = os.path.basename(video_file_path)
     else:
-        # Show only video (centered)
-        st.markdown("### Video")
-        video_file = os.path.join(video_path, video_filename)
-        display_video_with_mode(video_file, video_playback_mode)
+        # For local filesystem
+        video_path = st.session_state.video_path
 
-    # Action not recognized button
-    action_not_recognized = st.button(
-        "⚠️ Action not recognized", type="primary",
-        key=f"not_recognized_{action_id}",
-        help="Check this if you cannot identify or rate this action",
-        use_container_width=True
-        )
-
-    st.markdown("---")
-
-    # Rating scales
-    #st.markdown("### Rating Scales")
-    st.markdown("### Please rate the action on the following dimensions:")
-
-    scale_values = {}
-
-    for scale_config in rating_scales:
-        scale_type = scale_config.get('type', 'discrete')
-        title = scale_config.get('title', 'Scale')
-        label_low = scale_config.get('label_low', '')
-        label_high = scale_config.get('label_high', '')
-        required = scale_config.get('required_to_proceed', True)
-
-        # Display scale title and labels
-        st.markdown(f"**{title}** {'*(required)*' if required and not action_not_recognized else ''}")
-
-        col_low, col_scale, col_high = st.columns([1, 3, 1])
-
-        with col_low:
-            st.markdown(f"*{label_low}*")
-
-        with col_scale:
-            if scale_type == 'discrete':
-                values = scale_config.get('values', [1, 2, 3, 4, 5, 6, 7])
-                selected = st.pills(
-                    label=title,
-                    options=values,
-                    #horizontal=True,
-                    key=f"scale_{action_id}_{title}",
-                    label_visibility="collapsed",
-                    width="stretch"
-                 #   index=None
-                )
-                scale_values[title] = selected
-
-            elif scale_type == 'slider':
-                slider_min = scale_config.get('slider_min', 0)
-                slider_max = scale_config.get('slider_max', 100)
-                selected = st.slider(
-                    label=title,
-                    min_value=float(slider_min),
-                    max_value=float(slider_max),
-                    value=float(slider_min + slider_max) / 2,
-                    key=f"scale_{action_id}_{title}",
-                    label_visibility="collapsed"
-                )
-                scale_values[title] = selected
-
-            elif scale_type == 'text':
-                selected = st.text_input(
-                    label=title,
-                    key=f"scale_{action_id}_{title}",
-                    placeholder="Enter your response...",
-                    label_visibility="collapsed"
-                )
-                scale_values[title] = selected if selected else None
-
-        with col_high:
-            st.markdown(f"*{label_high}*")
-
-        st.markdown("")  # Spacing
+    # Use shared display function
+    scale_values = display_video_rating_interface(
+        video_filename=video_filename,
+        video_path=video_path,
+        config=config,
+        rating_scales=rating_scales,
+        key_prefix="scale_",
+        action_id=action_id,
+        metadata=metadata,
+        header_content=None,  # No header for main videoplayer
+        display_video_func=display_video_with_mode
+    )
 
     st.markdown("---")
 
@@ -507,20 +424,16 @@ def display_rating_interface(action_id, video_filename, config):
     with col3:
         if st.button("Submit Rating ▶️", use_container_width=True, type="primary"):
             # Validate ratings
-            if not action_not_recognized:
-                # Check that all required scales have values
-                required_scales = st.session_state.required_scales
-                missing_scales = [
-                    title for title in required_scales
-                    if scale_values.get(title) is None or scale_values.get(title) == ''
-                ]
+            validation_errors = _validate_ratings(scale_values)
 
-                if missing_scales:
-                    st.error(f"⚠️ Please provide ratings for all required scales: {', '.join(missing_scales)}")
-                    st.stop()
+            if validation_errors:
+                st.error("⚠️ Please complete the required ratings:")
+                for error in validation_errors:
+                    st.warning(error)
+                st.stop()
 
             # Save rating
-            if save_rating(user.user_id, action_id, scale_values, action_not_recognized):
+            if save_rating(user.user_id, action_id, scale_values):
                 st.success("✅ Rating saved successfully!")
 
                 # Move to next video
@@ -531,6 +444,82 @@ def display_rating_interface(action_id, video_filename, config):
                 st.rerun()
             else:
                 st.error("❌ Failed to save rating. Please try again.")
+
+def _validate_ratings(scale_values):
+    """
+    Validate that all required ratings are provided.
+    Checks both individual required scales and group requirements.
+
+    Returns:
+        List of error messages (empty if validation passes)
+    """
+    errors = []
+
+    # Check individually required scales (not in groups)
+    required_scales = st.session_state.get('required_scales', [])
+    missing_scales = [
+        title for title in required_scales
+        if scale_values.get(title) is None or scale_values.get(title) == ''
+    ]
+
+    if missing_scales:
+        errors.append(f"Required fields: {', '.join(missing_scales)}")
+
+    # Check group requirements
+    group_requirements = st.session_state.get('group_requirements', {})
+    rating_scales = st.session_state.get('rating_scales', [])
+
+    for group_id, required_count in group_requirements.items():
+        # Find all scales in this group
+        group_scales = [
+            scale for scale in rating_scales
+            if scale.get('group') == group_id
+        ]
+
+        # Count how many scales in this group have been changed
+        changed_count = 0
+        for scale in group_scales:
+            title = scale.get('title')
+            value = scale_values.get(title)
+
+            # Check if value exists and is not empty
+            if value is None or value == '':
+                continue
+
+            # For sliders, check if value has been changed from initial position
+            if scale.get('type') == 'slider':
+                initial_state = scale.get('initial_state', 'low')
+                slider_min = scale.get('slider_min', 0)
+                slider_max = scale.get('slider_max', 100)
+
+                # Calculate initial value based on initial_state
+                if initial_state == 'low':
+                    initial_value = slider_min
+                elif initial_state == 'high':
+                    initial_value = slider_max
+                else:  # center
+                    initial_value = (slider_min + slider_max) / 2
+
+                # Count as changed if value is different from initial
+                if value != initial_value:
+                    changed_count += 1
+            else:
+                # For discrete and text types, any non-empty value counts as changed
+                changed_count += 1
+
+        if changed_count < required_count:
+            # Find group title for error message
+            group_title = next(
+                (g.get('title', group_id) for g in st.session_state.get('rating_groups', [])
+                 if g.get('id') == group_id),
+                group_id
+            )
+            errors.append(
+                f"Group '{group_title}': Please rate at least {required_count} emotions "
+                f"(currently {changed_count}/{required_count})"
+            )
+
+    return errors
 
 def show_completion_message():
     """Display message when all videos have been rated."""

@@ -1,4 +1,29 @@
 # Rating scales configuration
+
+# ============================================================================
+# GROUPS (optional)
+# Groups allow you to specify that a certain number of ratings from a set
+# of scales must be changed before the user can proceed.
+#
+# Group properties:
+# - title: descriptive name (for documentation purposes)
+# - id: unique identifier used to reference this group
+# - number_of_ratings: how many scales from this group must be rated to proceed
+#
+# Example:
+# groups:
+#   - title: "Emotion Ratings"
+#     id: "emotions"
+#     number_of_ratings: 3
+# ============================================================================
+
+groups:
+  - title: "Emotions"
+    id: "emotions"
+    number_of_ratings: 1
+
+# ============================================================================
+# RATING SCALES
 # Each scale can be customized with the following properties:
 # - active: true/false - whether to display this scale
 # - type: "discrete", "slider", or "text"
@@ -8,35 +33,12 @@
 # - values: (for discrete type only) list of discrete values to display [e.g., [1,2,3,4,5,6,7] or [-2,-1,0,1,2]]
 # - slider_min: (for slider type only) minimum value of the slider
 # - slider_max: (for slider type only) maximum value of the slider
+# - initial_state: (for slider type only) initial position of slider: "low" (min), "center" (middle), or "high" (max) (default: "low")
 # - required_to_proceed: true/false - whether user must provide input for this scale to proceed (default: true)
-#   Note: When "action not recognized" is pressed, all scales become optional
+# - group: (optional) group ID this scale belongs to
+# ============================================================================
 
-- active: false
-  type: "discrete"
-  title: "Creativity"
-  label_low: "not creative"
-  label_high: "very creative"
-  values: [1, 2, 3, 4, 5, 6, 7]
-  required_to_proceed: true
-
-- active: false
-  type: "discrete"
-  title: "Technical Correctness"
-  label_low: "very low"
-  label_high: "very high"
-  values: [1, 2, 3, 4, 5, 6, 7]
-  required_to_proceed: true
-
-- active: false
-  type: "discrete"
-  title: "Aesthetic Appeal"
-  label_low: "not appealing"
-  label_high: "very appealing"
-  values: [1, 2, 3, 4, 5, 6, 7]
-  required_to_proceed: true
-
-# Example of a slider scale (inactive by default)
-# Uncomment to add a slider scale from 0-100
+scales:
 - active: true
   type: "slider"
   title: "Angry"
@@ -44,43 +46,104 @@
   label_high: "very angry"
   slider_min: 0
   slider_max: 100
+  initial_state: "low"
   required_to_proceed: false
+  group: "emotions"
 
 - active: true
   type: "slider"
   title: "Happy"
-  label_low: ""
-  label_high: ""
+  label_low: "not happy"
+  label_high: "very happy"
   slider_min: 0
   slider_max: 100
+  initial_state: "low"
   required_to_proceed: false
+  group: "emotions"
 
 - active: true
   type: "slider"
   title: "Sad"
-  label_low: "not at all sad"
+  label_low: "not sad"
   label_high: "very sad"
   slider_min: 0
   slider_max: 100
+  initial_state: "low"
   required_to_proceed: false
+  group: "emotions"
+
+- active: true
+  type: "slider"
+  title: "Scared"
+  label_low: "not scared"
+  label_high: "very scared"
+  slider_min: 0
+  slider_max: 100
+  initial_state: "low"
+  required_to_proceed: false
+  group: "emotions"
+
+- active: true
+  type: "slider"
+  title: "Neutral"
+  label_low: "Presence of other emotions"
+  label_high: "Absence of other emotions"
+  slider_min: 0
+  slider_max: 100
+  initial_state: "low"
+  required_to_proceed: false
+  group: "emotions"
+
+- active: true
+  type: "slider"
+  title: "Surprised"
+  label_low: "not surprised"
+  label_high: "very surprised"
+  slider_min: 0
+  slider_max: 100
+  initial_state: "low"
+  required_to_proceed: false
+  group: "emotions"
+
+- active: true
+  type: "slider"
+  title: "Disgusted"
+  label_low: "not disgusted"
+  label_high: "very disgusted"
+  slider_min: 0
+  slider_max: 100
+  initial_state: "low"
+  required_to_proceed: false
+  group: "emotions"
+
+- active: true
+  type: "slider"
+  title: "Contempt/Hate"
+  label_low: "no contempt/hate"
+  label_high: "very contemptuous/hateful"
+  slider_min: 0
+  slider_max: 100
+  initial_state: "low"
+  required_to_proceed: false
+  group: "emotions"
 
 - active: true
   type: "discrete"
   title: "Win or Loss"
-  #label_low: ""
-  #label_high: "very appealing"
+  label_low: ""
+  label_high: ""
   values: ["win", "loss"]
   required_to_proceed: true
 
-# Example of a text input scale (inactive by default)
-# Uncomment to add a free-text comments field
-#- active: true
-#  type: "text"
-#  title: "Comments"
-#  label_low: ""
-#  label_high: ""
+  # Example of a text input scale (inactive by default)
+  # Uncomment to add a free-text comments field
+  #- active: true
+  #  type: "text"
+  #  title: "Comments"
+  #  label_low: ""
+  #  label_high: ""
 
-# Example of a 5-point discrete scale (inactive by default)
+  # Example of a 5-point discrete scale (inactive by default)
 - active: false
   type: "text"
   title: "Open Comment"
@@ -88,7 +151,7 @@
   label_high: ""
   #values: [1, 2, 3, 4, 5, 6, 7, 8]
 
-# Example of a discrete scale with custom labels (e.g., -2 to +2)
+  # Example of a discrete scale with custom labels (e.g., -2 to +2)
 - active: false
   type: "slider"
   title: "Confidence"
@@ -97,7 +160,7 @@
   slider_min: 0
   slider_max: 1
 
-# Example of a percentage slider (0-1)
+  # Example of a percentage slider (0-1)
 - active: false
   type: "slider"
   title: "Random"
