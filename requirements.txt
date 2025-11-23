@@ -3,5 +3,6 @@ pandas>=2.0.0
 pyyaml>=6.0
 duckdb>=0.9.0
 matplotlib>=3.7.0
+opencv-python-headless==4.8.1.78
 mplsoccer>=1.1.0
 streamlit-gsheets>=0.0.2
