@@ -10,6 +10,8 @@ import pandas as pd
 import base64
 
 from utils.config_loader import load_rating_scales
+from utils.video_rating_display import display_video_rating_interface
+from utils.gdrive_manager import get_all_video_filenames, get_video_path
 
 def display_video_with_mode(video_file_path, playback_mode='loop'):
     """
@@ -64,6 +66,84 @@ def display_video_with_mode(video_file_path, playback_mode='loop'):
     else:
         # Fallback to default
         st.video(video_file_path)
+
+def _validate_familiarization_ratings(scale_values):
+    """
+    Validate that all required ratings are provided for familiarization trials.
+    Checks both individual required scales and group requirements.
+
+    Returns:
+        List of error messages (empty if validation passes)
+    """
+    errors = []
+
+    # Check individually required scales (not in groups)
+    required_scales = st.session_state.get('required_scales', [])
+    missing_scales = [
+        title for title in required_scales
+        if scale_values.get(title) is None or scale_values.get(title) == ''
+    ]
+
+    if missing_scales:
+        errors.append(f"Required fields: {', '.join(missing_scales)}")
+
+    # Check group requirements
+    group_requirements = st.session_state.get('group_requirements', {})
+    rating_scales = st.session_state.get('rating_scales', [])
+
+    for group_id, group_info in group_requirements.items():
+        required_count = group_info['number_of_ratings']
+        error_msg = group_info.get('error_msg', '')
+        group_title = group_info.get('title', group_id)
+
+        # Find all scales in this group
+        group_scales = [
+            scale for scale in rating_scales
+            if scale.get('group') == group_id
+        ]
+
+        # Count how many scales in this group have been changed
+        changed_count = 0
+        for scale in group_scales:
+            title = scale.get('title')
+            value = scale_values.get(title)
+
+            # Check if value exists and is not empty
+            if value is None or value == '':
+                continue
+
+            # For sliders, check if value has been changed from initial position
+            if scale.get('type') == 'slider':
+                initial_state = scale.get('initial_state', 'low')
+                slider_min = scale.get('slider_min', 0)
+                slider_max = scale.get('slider_max', 100)
+
+                # Calculate initial value based on initial_state
+                if initial_state == 'low':
+                    initial_value = slider_min
+                elif initial_state == 'high':
+                    initial_value = slider_max
+                else:  # center
+                    initial_value = (slider_min + slider_max) / 2
+
+                # Count as changed if value is different from initial
+                if value != initial_value:
+                    changed_count += 1
+            else:
+                # For discrete and text types, any non-empty value counts as changed
+                changed_count += 1
+
+        if changed_count < required_count:
+            # Use custom error message if provided, otherwise use default
+            if error_msg:
+                errors.append(error_msg)
+            else:
+                errors.append(
+                    f"Group '{group_title}': Please rate at least {required_count} emotions "
+                    f"(currently {changed_count}/{required_count})"
+                )
+
+    return errors
 
 def show():
     """Display the familiarization trials screen."""
@@ -130,119 +210,101 @@ def initialize_familiarization(config):
         if scale.get('required_to_proceed', True) and not scale.get('group')
     ]
 
-    # Get familiarization video path from config
-    familiarization_path = config['paths'].get('familiarization_video_path', 'videos_familiarization')
+    # Get video source from config
+    video_source = config['paths'].get('video_source', 'local')
 
-    # Get all video files from familiarization folder
-    try:
-        all_videos = [f for f in os.listdir(familiarization_path) if f.lower().endswith('.mp4')]
-        # Sort to ensure consistent order for all users
-        all_videos.sort()
-        print(f"[INFO] Found {len(all_videos)} familiarization videos in {familiarization_path}")
-    except FileNotFoundError:
-        st.error(f"Familiarization video directory not found: {familiarization_path}")
-        print(f"[ERROR] Directory not found: {familiarization_path}")
-        print(f"[INFO] Current working directory: {os.getcwd()}")
-        all_videos = []
-    except Exception as e:
-        st.error(f"Error loading familiarization videos: {e}")
-        print(f"[ERROR] Error loading videos from {familiarization_path}: {e}")
-        all_videos = []
+    # Get all video files based on source
+    if video_source == 'gdrive':
+        # Get videos from Google Drive
+        try:
+            folder_id = st.secrets["gdrive"]["familiarization_folder_id"]
+            all_videos = get_all_video_filenames(folder_id)
+            # Sort to ensure consistent order for all users
+            all_videos.sort()
+            print(f"[INFO] Found {len(all_videos)} familiarization videos from Google Drive")
+            # Store folder_id for later use
+            st.session_state.familiarization_gdrive_folder_id = folder_id
+            st.session_state.familiarization_video_source = 'gdrive'
+        except Exception as e:
+            st.error(f"Failed to load familiarization videos from Google Drive: {e}")
+            print(f"[ERROR] Google Drive error: {e}")
+            all_videos = []
+    else:
+        # Get videos from local filesystem
+        familiarization_path = config['paths'].get('familiarization_video_path', 'videos_familiarization')
+        try:
+            all_videos = [f for f in os.listdir(familiarization_path) if f.lower().endswith('.mp4')]
+            # Sort to ensure consistent order for all users
+            all_videos.sort()
+            print(f"[INFO] Found {len(all_videos)} familiarization videos in {familiarization_path}")
+            st.session_state.familiarization_path = familiarization_path
+            st.session_state.familiarization_video_source = 'local'
+        except FileNotFoundError:
+            st.error(f"Familiarization video directory not found: {familiarization_path}")
+            print(f"[ERROR] Directory not found: {familiarization_path}")
+            print(f"[INFO] Current working directory: {os.getcwd()}")
+            all_videos = []
+        except Exception as e:
+            st.error(f"Error loading familiarization videos: {e}")
+            print(f"[ERROR] Error loading videos from {familiarization_path}: {e}")
+            all_videos = []
 
     # Store in session state
     st.session_state.familiarization_videos = all_videos
     st.session_state.familiarization_video_index = 0
-    st.session_state.familiarization_path = familiarization_path
     st.session_state.familiarization_initialized = True
 
 def display_familiarization_interface(video_filename, config):
     """Display the familiarization rating interface."""
-    familiarization_path = st.session_state.familiarization_path
     rating_scales = st.session_state.rating_scales
+    video_source = st.session_state.get('familiarization_video_source', 'local')
 
-    # Display options from config
-    video_playback_mode = config['settings'].get('video_playback_mode', 'loop')
+    # Get video path based on source
+    if video_source == 'gdrive':
+        # For Google Drive, download the video and get temp path
+        folder_id = st.session_state.familiarization_gdrive_folder_id
+        video_file_path = get_video_path(video_filename, folder_id)
 
-    # Add familiarization header
+        if not video_file_path:
+            st.error(f"⚠️ Failed to load familiarization video from Google Drive: {video_filename}")
+            st.warning("This video could not be loaded due to a network error. You can skip this video and continue with the next one.")
 
-    current_index = st.session_state.familiarization_video_index
-    total_videos = len(st.session_state.familiarization_videos)
-    st.info(f"🎯 **Familiarization Trial** - **Video {current_index + 1} of {total_videos}**. These ratings will not be saved.")
+            # Add skip button
+            col1, col2, col3 = st.columns([1, 1, 1])
+            with col2:
+                if st.button("Skip to Next Video", use_container_width=True, type="primary"):
+                    # Move to next video
+                    st.session_state.familiarization_video_index = st.session_state.get('familiarization_video_index', 0) + 1
+                    st.rerun()
 
-    st.markdown("---")
+            return {}
 
-    # Video display (no metadata or pitch for familiarization)
-    video_file = os.path.join(familiarization_path, video_filename)
-    display_video_with_mode(video_file, video_playback_mode)
+        # For Google Drive, pass the parent directory of the temp file
+        familiarization_path = os.path.dirname(video_file_path)
+        # Override filename to just the basename
+        video_filename = os.path.basename(video_file_path)
+    else:
+        # For local filesystem
+        familiarization_path = st.session_state.familiarization_path
 
-    # Action not recognized button
-    action_not_recognized = st.button(
-        "⚠️ Action not recognized", type="primary",
-        key=f"famil_not_recognized_{video_filename}",
-        help="Check this if you cannot identify or rate this action",
-        use_container_width=True
+    # Define header content as a function
+    def show_familiarization_header():
+        current_index = st.session_state.familiarization_video_index
+        total_videos = len(st.session_state.familiarization_videos)
+        st.info(f"🎯 **Familiarization Trial** - **Video {current_index + 1} of {total_videos}**. These ratings will not be saved.")
+
+    # Use shared display function
+    scale_values = display_video_rating_interface(
+        video_filename=video_filename,
+        video_path=familiarization_path,
+        config=config,
+        rating_scales=rating_scales,
+        key_prefix="famil_scale_",
+        action_id=None,  # Familiarization doesn't use action IDs
+        metadata=None,  # Familiarization doesn't use metadata
+        header_content=show_familiarization_header,
+        display_video_func=display_video_with_mode
     )
-
-    st.markdown("---")
-
-    # Rating scales
-    st.markdown("### Please rate the action on the following dimensions:")
-
-    scale_values = {}
-
-    for scale_config in rating_scales:
-        scale_type = scale_config.get('type', 'discrete')
-        title = scale_config.get('title', 'Scale')
-        label_low = scale_config.get('label_low', '')
-        label_high = scale_config.get('label_high', '')
-        required = scale_config.get('required_to_proceed', True)
-
-        # Display scale title and labels
-        st.markdown(f"**{title}** {'*(required)*' if required and not action_not_recognized else ''}")
-
-        col_low, col_scale, col_high = st.columns([1, 3, 1])
-
-        with col_low:
-            st.markdown(f"*{label_low}*")
-
-        with col_scale:
-            if scale_type == 'discrete':
-                values = scale_config.get('values', [1, 2, 3, 4, 5, 6, 7])
-                selected = st.pills(
-                    label=title,
-                    options=values,
-                    key=f"famil_scale_{video_filename}_{title}",
-                    label_visibility="collapsed",
-                    width="stretch"
-                )
-                scale_values[title] = selected
-
-            elif scale_type == 'slider':
-                slider_min = scale_config.get('slider_min', 0)
-                slider_max = scale_config.get('slider_max', 100)
-                selected = st.slider(
-                    label=title,
-                    min_value=float(slider_min),
-                    max_value=float(slider_max),
-                    value=float(slider_min + slider_max) / 2,
-                    key=f"famil_scale_{video_filename}_{title}",
-                    label_visibility="collapsed"
-                )
-                scale_values[title] = selected
-
-            elif scale_type == 'text':
-                selected = st.text_input(
-                    label=title,
-                    key=f"famil_scale_{video_filename}_{title}",
-                    placeholder="Enter your response...",
-                    label_visibility="collapsed"
-                )
-                scale_values[title] = selected if selected else None
-
-        with col_high:
-            st.markdown(f"*{label_high}*")
-
-        st.markdown("")  # Spacing
 
     st.markdown("---")
 
@@ -263,17 +325,13 @@ def display_familiarization_interface(video_filename, config):
     with col3:
         if st.button("Continue ▶️", use_container_width=True, type="primary"):
             # Validate ratings (same validation as main rating screen)
-            if not action_not_recognized:
-                # Check that all required scales have values
-                required_scales = st.session_state.required_scales
-                missing_scales = [
-                    title for title in required_scales
-                    if scale_values.get(title) is None or scale_values.get(title) == ''
-                ]
+            validation_errors = _validate_familiarization_ratings(scale_values)
 
-                if missing_scales:
-                    st.error(f"⚠️ Please provide ratings for all required scales: {', '.join(missing_scales)}")
-                    st.stop()
+            if validation_errors:
+                st.error("⚠️ Please complete the required ratings:")
+                for error in validation_errors:
+                    st.warning(error)
+                st.stop()
 
             # Don't save rating - just move to next video
             st.session_state.familiarization_video_index += 1
