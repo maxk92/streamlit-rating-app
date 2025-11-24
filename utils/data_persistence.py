@@ -94,8 +94,14 @@ def save_rating(user_id, action_id, scale_values):
         'id': action_id
     }
 
-    # Add each scale's value
+    # Extract action_not_recognized flag if present
+    action_not_recognized = scale_values.get('_action_not_recognized', False)
+    rating_data['action_not_recognized'] = action_not_recognized
+
+    # Add each scale's value (skip internal keys starting with _)
     for title, value in scale_values.items():
+        if title.startswith('_'):
+            continue  # Skip internal keys like _action_not_recognized
         # Use title as key (sanitized for JSON compatibility)
         key = title.lower().replace(' ', '_')
         rating_data[key] = value

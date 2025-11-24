@@ -77,6 +77,11 @@ def _validate_familiarization_ratings(scale_values):
     """
     errors = []
 
+    # If action not recognized, skip validation
+    action_not_recognized = scale_values.get('_action_not_recognized', False)
+    if action_not_recognized:
+        return errors
+
     # Check individually required scales (not in groups)
     required_scales = st.session_state.get('required_scales', [])
     missing_scales = [
