@@ -4,7 +4,7 @@ paths:
   # Video source: "local" or "gdrive"
   # - "local": Load videos from local filesystem (video_path)
   # - "gdrive": Load videos from Google Drive (folder IDs configured in .streamlit/secrets.toml)
-  video_source: "local"
+  video_source: "gdrive"
 
   # Local filesystem paths (used when video_source = "local")
   # path to external drive on Linux
@@ -15,18 +15,18 @@ paths:
 
   # dummy videos on localhost max
   #video_path: "/home/max/drive/projects/3_Creativity/creativity-rating-app/videos_all/"
-  video_path: "../data_saumya/videos/"
+  video_path: "../data/videos/"
 
   # Familiarization videos (always the same 3 videos for all users)
-  familiarization_video_path: "../data_saumya/videos_familiarization"
+  familiarization_video_path: "/data/videos_familiarization"
 
 settings:
   min_ratings_per_video: 2
   questionnaire_fields_file: "config/questionnaire_fields.yaml"  # External file for questionnaire configuration
   rating_scales_file: "config/rating_scales.yaml"  # External file for rating scales configuration
-  display_metadata: false  # Show metadata (team, player, type, etc.) at top of video screen
-  display_pitch: false  # Show pitch visualization next to video
-  video_playback_mode: "once"  # "loop" = video repeats, "once" = plays once and cannot be restarted
+  display_metadata: true  # Show metadata (team, player, type, etc.) at top of video screen
+  display_pitch: true  # Show pitch visualization next to video
+  video_playback_mode: "loop"  # "loop" = video repeats, "once" = plays once and cannot be restarted
   enable_familiarization: true  # Set to false to skip all familiarization screens (pre-famil, famil, post-famil)
 
   # Video selection and stratification settings
@@ -34,17 +34,17 @@ settings:
 
   # Stratified sampling configuration (optional)
   # Leave empty or comment out to use simple random sampling
-  variables_for_stratification:
+  #variables_for_stratification:
   # Example configuration:
-    - variable: "LowHighPD"
-      levels: ["Low", "High"]
-      proportions: [0.5, 0.5]  # Must sum to 1.0
-    - variable: "WinLose"
-      levels: ["Win", "Loss"]
-      proportions: [0.5, 0.5]
-    - variable: "OlympicParalympic"
-      levels: ["Olympic", "Paralympic"]
-      proportions: [0.5, 0.5]
+  #  - variable: "LowHighPD"
+  #    levels: ["Low", "High"]
+  #    proportions: [0.5, 0.5]  # Must sum to 1.0
+  #  - variable: "WinLose"
+  #    levels: ["Win", "Loss"]
+  #    proportions: [0.5, 0.5]
+  #  - variable: "OlympicParalympic"
+  #    levels: ["Olympic", "Paralympic"]
+  #    proportions: [0.5, 0.5]
 
   # Metadata columns to display at top of video screen
   # Each item specifies a label (display name) and column (metadata column name)
@@ -65,13 +65,4 @@ settings:
   #   "local"  - Save JSON files to local filesystem only (for development)
   #   "online" - Save to Google Sheets + Google Drive JSON (for production)
   #   "both"   - Save to all three: Google Sheets + Google Drive + Local filesystem (maximum redundancy)
-  storage_mode: "online"
-
-# Screen layout proportions for VideoPlayerScreen
-# These values control the relative heights of different sections (must sum to 1.0)
-# Adjust these values when using more/fewer scales to optimize screen space
-screen_dimensions:
-  metadata_display_height: 0.08    # Top metadata bar (team, player, type, etc.)
-  video_player_height: 0.46        # Video player and pitch visualization area
-  control_buttons_height: 0.08     # Bottom control buttons row
-  rating_scales_height: 0.38       # Rating scales section
+  #storage_mode: "online"
