@@ -51,28 +51,28 @@
   hint_text: "Enter a country name"
   required_to_proceed: true
 
-- active: true
+- active: false
   type: "multiple_choice"
   field_name: "watch_olympics"
   title: "During an Olympic year, I generally spend around ___ hours watching the Olympics:"
   options: ["0-3 hrs", "3-10hrs", "10-20hr", "20hr+"]
   required_to_proceed: true
 
-- active: false
+- active: true
   type: "numeric"
   field_name: "coach_exp"
   title: ""
   hint_text: "Experience as a coach (years)"
   required_to_proceed: true
 
-- active: false
+- active: true
   type: "numeric"
   field_name: "watch_exp"
   title: ""
   hint_text: "Experience regularly watching soccer (years)"
   required_to_proceed: true
 
-- active: false
+- active: true
   type: "multiple_choice"
   field_name: "license"
   title: "Coaching License:"
