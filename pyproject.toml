@@ -1,0 +1,17 @@
+[project]
+name = "4-streamlit-rating-app"
+version = "0.1.0"
+description = "Add your description here"
+readme = "README.md"
+requires-python = ">=3.11"
+dependencies = [
+    "duckdb>=1.4.4",
+    "google-api-python-client>=2.190.0",
+    "gspread>=6.2.1",
+    "matplotlib>=3.10.8",
+    "mplsoccer>=1.6.1",
+    "pandas>=1.5.3",
+    "pyyaml>=6.0.3",
+    "st-gsheets-connection>=0.0.3",
+    "streamlit>=1.54.0",
+]
