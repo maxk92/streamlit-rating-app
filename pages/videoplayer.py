@@ -13,7 +13,7 @@ from io import BytesIO
 from utils.config_loader import load_rating_scales
 from utils.data_persistence import save_rating, get_rated_videos_for_user
 from utils.video_rating_display import display_video_rating_interface
-from utils.gdrive_manager import get_all_video_filenames, get_video_path
+from utils.gdrive_manager import get_all_video_filenames, get_video_path, download_file_to_temp
 
 def stratified_sample_videos(videos_to_rate, df_metadata, number_of_videos, strat_config):
     """
@@ -263,9 +263,26 @@ def initialize_video_player(config):
     ]
 
     # Get configuration
-    metadata_path = config['paths']['metadata_path']
+    metadata_path = config['paths'].get('metadata_path', '')
+    metadata_source = config['paths'].get('metadata_source', 'local')
     video_source = config['paths'].get('video_source', 'local')
     min_ratings_per_video = config['settings']['min_ratings_per_video']
+
+    # Download metadata from Google Drive if configured
+    if metadata_source == 'gdrive' and metadata_path:
+        try:
+            filename = os.path.basename(metadata_path)
+            file_id = st.secrets["gdrive"]["metadata_file_id"]
+            temp_path = download_file_to_temp(file_id, filename)
+            if temp_path:
+                metadata_path = temp_path
+                print(f"[INFO] Metadata downloaded from Google Drive: {filename}")
+            else:
+                print("[ERROR] Failed to download metadata from Google Drive")
+                metadata_path = None
+        except Exception as e:
+            print(f"[ERROR] Failed to get metadata from Google Drive: {e}")
+            metadata_path = None
 
     # Get all video files based on source
     if video_source == 'gdrive':
@@ -315,7 +332,9 @@ def initialize_video_player(config):
             event_ids = [v.replace('.mp4', '') for v in videos_to_rate]
 
             # Detect file type and load metadata accordingly
-            if metadata_path.endswith('.duckdb'):
+            if not metadata_path:
+                print("[WARNING] No metadata path available, skipping metadata load")
+            elif metadata_path.endswith('.duckdb'):
                 # Load from DuckDB (lazy import to avoid binary conflicts on Streamlit Cloud)
                 import duckdb
                 conn = duckdb.connect(metadata_path, read_only=True)

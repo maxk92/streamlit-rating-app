@@ -249,6 +249,21 @@ def get_video_path(filename, folder_id):
     return download_video_to_temp(matching_file['id'], filename)
 
 
+def download_file_to_temp(file_id, filename):
+    """
+    Download any file from Google Drive to a temporary location.
+    Uses the same download logic and cache as download_video_to_temp.
+
+    Args:
+        file_id: Google Drive file ID
+        filename: Original filename (used for cache key and to preserve file extension)
+
+    Returns:
+        Path to local temporary file, or None on error
+    """
+    return download_video_to_temp(file_id, filename)
+
+
 def clear_video_cache():
     """
     Clear the video cache and delete temporary files.
