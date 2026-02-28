@@ -3,6 +3,7 @@ Questionnaire page - Collect demographic and experience information.
 Dynamically builds form based on config/questionnaire_fields.yaml.
 """
 import streamlit as st
+from utils.navigation import get_prev_page
 from utils.config_loader import load_questionnaire_fields
 from utils.data_persistence import save_user_data, get_all_existing_user_ids
 
@@ -171,7 +172,7 @@ def show_questionnaire_form(fields):
 
     # Handle form submission
     if back_button:
-        st.session_state.page = 'consent'
+        st.session_state.page = get_prev_page('questionnaire', st.session_state.config)
         st.rerun()
 
     if next_button:

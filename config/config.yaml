@@ -2,8 +2,8 @@
 # App metadata (used in browser tab and page header)
 # ============================================================
 app:
-  title: "Decoding Emotions App"
-  icon: ""  # emoji or leave empty
+  title: "Streamlit Rating App"
+  icon: "football"  # emoji or leave empty
 
 # ============================================================
 # Paths
@@ -14,7 +14,7 @@ paths:
   # Video source: "local" or "gdrive"
   # - "local": Load videos from local filesystem (video_path)
   # - "gdrive": Load videos from Google Drive (folder IDs configured in .streamlit/secrets.toml)
-  video_source: "local"
+  video_source: "gdrive"
 
   # Local filesystem paths (used when video_source = "local")
   # path to external drive on Linux
@@ -89,7 +89,7 @@ settings:
 
   # --- Page skip settings (for development or specific deployments) ---
   skip_welcome: true
-  skip_login: true
+  skip_login: false
   skip_consent: true
   skip_questionnaire: true
 
@@ -97,4 +97,4 @@ settings:
   # "local"  - JSON files only (for development)
   # "online" - Google Sheets + Google Drive JSON (for production)
   # "both"   - All three (maximum redundancy)
-  storage_mode: "local"  # use "online" or "both" for production deployment
+  storage_mode: "online"  # use "online" or "both" for production deployment

@@ -47,5 +47,5 @@ notes_for_joss.txt
 .claude/
 
 # Large data files — never commit the data/ directory
-data/
+data/statsbomb_event_data.duckdb
 

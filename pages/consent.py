@@ -3,6 +3,7 @@ Consent page - Participant information and consent form.
 """
 import streamlit as st
 import os
+from utils.navigation import get_next_page, get_prev_page
 
 def show():
     """Display the consent screen."""
@@ -71,7 +72,7 @@ def show():
 
     with col1:
         if st.button("◀️ Back", use_container_width=True):
-            st.session_state.page = 'login'
+            st.session_state.page = get_prev_page('consent', st.session_state.config)
             st.rerun()
 
     with col3:
@@ -84,5 +85,5 @@ def show():
                 from datetime import datetime
                 st.session_state.consent_given = True
                 st.session_state.consent_timestamp = datetime.now().isoformat(timespec='seconds')
-                st.session_state.page = 'questionnaire'
+                st.session_state.page = get_next_page('consent', st.session_state.config)
                 st.rerun()
