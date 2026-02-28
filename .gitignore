@@ -46,3 +46,6 @@ notes_for_joss.txt
 # Claude
 .claude/
 
+# Large Files
+data/statsbomb_event_data.duckdb
+
