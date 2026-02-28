@@ -48,4 +48,5 @@ notes_for_joss.txt
 
 # Large Files
 data/statsbomb_event_data.duckdb
+data/vids/
 
