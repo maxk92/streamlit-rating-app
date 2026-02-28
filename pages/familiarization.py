@@ -61,7 +61,9 @@ def display_video_with_mode(video_file_path, playback_mode='loop'):
             }}
         </style>
         """
-        components.html(video_html, height=600)
+        config = st.session_state.get('config', {}) or {}
+        height = config.get('settings', {}).get('video_player_height', 600)
+        components.html(video_html, height=height)
 
     else:
         # Fallback to default
@@ -198,8 +200,19 @@ def show():
 
     current_video = videos[current_video_index]
 
-    # Display the rating interface (without saving)
-    display_familiarization_interface(current_video, config)
+    # Branch on display mode
+    display_mode = config.get('settings', {}).get('display_mode', 'combined')
+
+    if display_mode == 'separate':
+        if 'current_famil_screen' not in st.session_state:
+            st.session_state.current_famil_screen = 'video'
+
+        if st.session_state.current_famil_screen == 'video':
+            display_famil_video_screen(current_video, config)
+        else:
+            display_famil_rating_screen(current_video, config)
+    else:
+        display_familiarization_interface(current_video, config)
 
 def initialize_familiarization(config):
     """Initialize familiarization state - load videos and rating scales."""
@@ -259,38 +272,125 @@ def initialize_familiarization(config):
     st.session_state.familiarization_video_index = 0
     st.session_state.familiarization_initialized = True
 
-def display_familiarization_interface(video_filename, config):
-    """Display the familiarization rating interface."""
-    rating_scales = st.session_state.rating_scales
+def _resolve_famil_video_path(video_filename):
+    """
+    Resolve the familiarization video directory and normalized filename.
+
+    Returns:
+        (video_path, video_filename) tuple, or (None, None) if the video cannot be loaded.
+    """
     video_source = st.session_state.get('familiarization_video_source', 'local')
 
-    # Get video path based on source
     if video_source == 'gdrive':
-        # For Google Drive, download the video and get temp path
         folder_id = st.session_state.familiarization_gdrive_folder_id
         video_file_path = get_video_path(video_filename, folder_id)
 
         if not video_file_path:
             st.error(f"⚠️ Failed to load familiarization video from Google Drive: {video_filename}")
-            st.warning("This video could not be loaded due to a network error. You can skip this video and continue with the next one.")
-
-            # Add skip button
+            st.warning("This video could not be loaded due to a network error. You can skip this video and continue.")
             col1, col2, col3 = st.columns([1, 1, 1])
             with col2:
                 if st.button("Skip to Next Video", use_container_width=True, type="primary"):
-                    # Move to next video
                     st.session_state.familiarization_video_index = st.session_state.get('familiarization_video_index', 0) + 1
+                    st.session_state.current_famil_screen = 'video'
                     st.rerun()
+            return None, None
 
-            return {}
+        return os.path.dirname(video_file_path), os.path.basename(video_file_path)
 
-        # For Google Drive, pass the parent directory of the temp file
-        familiarization_path = os.path.dirname(video_file_path)
-        # Override filename to just the basename
-        video_filename = os.path.basename(video_file_path)
     else:
-        # For local filesystem
-        familiarization_path = st.session_state.familiarization_path
+        return st.session_state.familiarization_path, video_filename
+
+
+def display_famil_video_screen(video_filename, config):
+    """Show the video-only screen for a familiarization trial (separate mode)."""
+    current_index = st.session_state.familiarization_video_index
+    total_videos = len(st.session_state.familiarization_videos)
+
+    st.info(f"🎯 **Familiarization Trial — Video {current_index + 1} of {total_videos}**. These ratings will not be saved.")
+
+    video_path, resolved_filename = _resolve_famil_video_path(video_filename)
+    if video_path is None:
+        return
+
+    display_video_rating_interface(
+        video_filename=resolved_filename,
+        video_path=video_path,
+        config=config,
+        rating_scales=[],
+        key_prefix="famil_scale_",
+        action_id=None,
+        metadata=None,
+        display_video_func=display_video_with_mode,
+        display_mode='video_only'
+    )
+
+    st.markdown("---")
+    col1, col2, col3 = st.columns([1, 1, 1])
+    with col3:
+        if st.button("Continue to Rating ▶️", use_container_width=True, type="primary"):
+            st.session_state.current_famil_screen = 'rating'
+            st.rerun()
+
+
+def display_famil_rating_screen(video_filename, config):
+    """Show the rating-only screen for a familiarization trial (separate mode)."""
+    rating_scales = st.session_state.rating_scales
+    current_index = st.session_state.familiarization_video_index
+    total_videos = len(st.session_state.familiarization_videos)
+
+    st.info(f"🎯 **Familiarization Rating {current_index + 1} of {total_videos}**. These ratings will not be saved.")
+
+    scale_values = display_video_rating_interface(
+        video_filename=video_filename,
+        video_path="",  # not used in rating_only mode
+        config=config,
+        rating_scales=rating_scales,
+        key_prefix="famil_scale_",
+        action_id=None,
+        metadata=None,
+        display_video_func=display_video_with_mode,
+        display_mode='rating_only'
+    )
+
+    # "Action not recognized" advances immediately (no save for familiarization)
+    if scale_values.get('_action_not_recognized', False):
+        st.session_state.familiarization_video_index += 1
+        st.session_state.current_famil_screen = 'video'
+        st.session_state.confirm_back_famil = False
+        st.rerun()
+
+    st.markdown("---")
+    col1, col2, col3 = st.columns([1, 1, 1])
+
+    with col1:
+        if st.button("◀️ Back to Video", use_container_width=True):
+            st.session_state.current_famil_screen = 'video'
+            st.rerun()
+
+    with col3:
+        if st.button("Continue ▶️", use_container_width=True, type="primary"):
+            validation_errors = _validate_familiarization_ratings(scale_values)
+
+            if validation_errors:
+                st.error("⚠️ Please complete the required ratings:")
+                for error in validation_errors:
+                    st.warning(error)
+                st.stop()
+
+            st.session_state.familiarization_video_index += 1
+            st.session_state.current_famil_screen = 'video'
+            st.session_state.confirm_back_famil = False
+            st.rerun()
+
+
+def display_familiarization_interface(video_filename, config):
+    """Display the familiarization rating interface (combined mode)."""
+    rating_scales = st.session_state.rating_scales
+
+    video_path, video_filename = _resolve_famil_video_path(video_filename)
+    if video_path is None:
+        return {}
 
     # Define header content as a function
     def show_familiarization_header():
@@ -301,15 +401,21 @@ def display_familiarization_interface(video_filename, config):
     # Use shared display function
     scale_values = display_video_rating_interface(
         video_filename=video_filename,
-        video_path=familiarization_path,
+        video_path=video_path,
         config=config,
         rating_scales=rating_scales,
         key_prefix="famil_scale_",
-        action_id=None,  # Familiarization doesn't use action IDs
-        metadata=None,  # Familiarization doesn't use metadata
+        action_id=None,
+        metadata=None,
         header_content=show_familiarization_header,
         display_video_func=display_video_with_mode
     )
+
+    # "Action not recognized" advances immediately (no save for familiarization)
+    if scale_values.get('_action_not_recognized', False):
+        st.session_state.familiarization_video_index += 1
+        st.session_state.confirm_back_famil = False
+        st.rerun()
 
     st.markdown("---")
 
@@ -329,7 +435,6 @@ def display_familiarization_interface(video_filename, config):
 
     with col3:
         if st.button("Continue ▶️", use_container_width=True, type="primary"):
-            # Validate ratings (same validation as main rating screen)
             validation_errors = _validate_familiarization_ratings(scale_values)
 
             if validation_errors:
@@ -338,7 +443,6 @@ def display_familiarization_interface(video_filename, config):
                     st.warning(error)
                 st.stop()
 
-            # Don't save rating - just move to next video
             st.session_state.familiarization_video_index += 1
             st.session_state.confirm_back_famil = False
             st.rerun()

@@ -5,13 +5,24 @@ import yaml
 import os
 
 def load_config():
-    """Load main configuration from config.yaml."""
+    """Load main configuration from config.yaml, merging page texts from page_texts.yaml."""
     config_path = 'config/config.yaml'
     if not os.path.exists(config_path):
         raise FileNotFoundError(f"{config_path} not found")
 
     with open(config_path, 'r') as file:
         config = yaml.safe_load(file)
+
+    # Load page texts and merge under config['pages']
+    page_texts_file = config.get('settings', {}).get('page_texts_file', 'config/page_texts.yaml')
+    if os.path.exists(page_texts_file):
+        with open(page_texts_file, 'r') as file:
+            page_texts = yaml.safe_load(file)
+        if page_texts:
+            config['pages'] = page_texts
+    else:
+        print(f"[WARNING] {page_texts_file} not found, page texts will be empty")
+        config['pages'] = {}
 
     return config
 

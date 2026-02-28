@@ -195,7 +195,9 @@ def display_video_with_mode(video_file_path, playback_mode='loop'):
             }}
         </style>
         """
-        components.html(video_html, height=600)
+        config = st.session_state.get('config', {}) or {}
+        height = config.get('settings', {}).get('video_player_height', 600)
+        components.html(video_html, height=height)
 
     else:
         # Fallback to default
@@ -230,8 +232,19 @@ def show():
     current_video = videos[current_video_index]
     action_id = os.path.splitext(current_video)[0]
 
-    # Display the rating interface
-    display_rating_interface(action_id, current_video, config)
+    # Branch on display mode
+    display_mode = config.get('settings', {}).get('display_mode', 'combined')
+
+    if display_mode == 'separate':
+        if 'current_screen' not in st.session_state:
+            st.session_state.current_screen = 'video'
+
+        if st.session_state.current_screen == 'video':
+            display_video_screen(action_id, current_video, config)
+        else:
+            display_rating_screen(action_id, current_video, config)
+    else:
+        display_rating_interface(action_id, current_video, config)
 
 def initialize_video_player(config):
     """Initialize video player state - load videos, metadata, and rating scales."""
@@ -353,41 +366,138 @@ def initialize_video_player(config):
     st.session_state.metadata = df_metadata
     st.session_state.video_initialized = True
 
-def display_rating_interface(action_id, video_filename, config):
-    """Display the main rating interface with video and scales."""
-    user = st.session_state.user
-    metadata = st.session_state.metadata
-    rating_scales = st.session_state.rating_scales
+def _resolve_video_path(video_filename):
+    """
+    Resolve the video directory path and normalized filename based on video source.
+
+    Returns:
+        (video_path, video_filename) tuple, or (None, None) if the video cannot be loaded.
+        For Google Drive sources, shows an error + skip button and returns (None, None).
+    """
     video_source = st.session_state.get('video_source', 'local')
 
-    # Get video path based on source
     if video_source == 'gdrive':
-        # For Google Drive, download the video and get temp path
         folder_id = st.session_state.gdrive_folder_id
         video_file_path = get_video_path(video_filename, folder_id)
 
         if not video_file_path:
             st.error(f"⚠️ Failed to load video from Google Drive: {video_filename}")
-            st.warning("This video could not be loaded due to a network error. You can skip this video and continue with the next one.")
-
-            # Add skip button
+            st.warning("This video could not be loaded due to a network error. You can skip this video and continue.")
             col1, col2, col3 = st.columns([1, 1, 1])
             with col2:
                 if st.button("Skip to Next Video", use_container_width=True, type="primary"):
-                    # Move to next video
                     st.session_state.current_video_index = st.session_state.get('current_video_index', 0) + 1
+                    st.session_state.current_screen = 'video'
                     st.rerun()
+            return None, None
 
-            return {}
+        return os.path.dirname(video_file_path), os.path.basename(video_file_path)
 
-        # For Google Drive, pass the parent directory of the temp file
-        # This maintains compatibility with display_video_rating_interface
-        video_path = os.path.dirname(video_file_path)
-        # Override filename to just the basename
-        video_filename = os.path.basename(video_file_path)
     else:
-        # For local filesystem
-        video_path = st.session_state.video_path
+        return st.session_state.video_path, video_filename
+
+
+def display_video_screen(action_id, video_filename, config):
+    """Show the video-only screen in separate display mode."""
+    metadata = st.session_state.metadata
+    current_index = st.session_state.get('current_video_index', 0)
+    total = len(st.session_state.videos_to_rate)
+
+    st.info(f"**Video {current_index + 1} of {total}** — Watch carefully before rating.")
+
+    video_path, resolved_filename = _resolve_video_path(video_filename)
+    if video_path is None:
+        return
+
+    display_video_rating_interface(
+        video_filename=resolved_filename,
+        video_path=video_path,
+        config=config,
+        rating_scales=[],
+        key_prefix="scale_",
+        action_id=action_id,
+        metadata=metadata,
+        display_video_func=display_video_with_mode,
+        display_mode='video_only'
+    )
+
+    st.markdown("---")
+    col1, col2, col3 = st.columns([1, 1, 1])
+    with col3:
+        if st.button("Continue to Rating ▶️", use_container_width=True, type="primary"):
+            st.session_state.current_screen = 'rating'
+            st.rerun()
+
+
+def display_rating_screen(action_id, video_filename, config):
+    """Show the rating-only screen in separate display mode."""
+    rating_scales = st.session_state.rating_scales
+    current_index = st.session_state.get('current_video_index', 0)
+    total = len(st.session_state.videos_to_rate)
+    user = st.session_state.user
+
+    st.info(f"**Rating {current_index + 1} of {total}**")
+
+    scale_values = display_video_rating_interface(
+        video_filename=video_filename,
+        video_path="",  # not used in rating_only mode
+        config=config,
+        rating_scales=rating_scales,
+        key_prefix="scale_",
+        action_id=action_id,
+        metadata=None,
+        display_video_func=display_video_with_mode,
+        display_mode='rating_only'
+    )
+
+    # "Action not recognized" acts as an immediate submit
+    if scale_values.get('_action_not_recognized', False):
+        if save_rating(user.user_id, action_id, scale_values):
+            st.session_state.current_video_index += 1
+            st.session_state.current_screen = 'video'
+            st.session_state.confirm_back = False
+            st.rerun()
+        else:
+            st.error("❌ Failed to save rating. Please try again.")
+        return
+
+    st.markdown("---")
+    col1, col2, col3 = st.columns([1, 1, 1])
+
+    with col1:
+        if st.button("◀️ Back to Video", use_container_width=True):
+            st.session_state.current_screen = 'video'
+            st.rerun()
+
+    with col3:
+        if st.button("Submit Rating ▶️", use_container_width=True, type="primary"):
+            validation_errors = _validate_ratings(scale_values)
+
+            if validation_errors:
+                st.error("⚠️ Please complete the required ratings:")
+                for error in validation_errors:
+                    st.warning(error)
+                st.stop()
+
+            if save_rating(user.user_id, action_id, scale_values):
+                st.success("✅ Rating saved successfully!")
+                st.session_state.current_video_index += 1
+                st.session_state.current_screen = 'video'
+                st.session_state.confirm_back = False
+                st.rerun()
+            else:
+                st.error("❌ Failed to save rating. Please try again.")
+
+
+def display_rating_interface(action_id, video_filename, config):
+    """Display the main rating interface with video and scales (combined mode)."""
+    user = st.session_state.user
+    metadata = st.session_state.metadata
+    rating_scales = st.session_state.rating_scales
+
+    video_path, video_filename = _resolve_video_path(video_filename)
+    if video_path is None:
+        return {}
 
     # Use shared display function
     scale_values = display_video_rating_interface(
@@ -401,6 +511,17 @@ def display_rating_interface(action_id, video_filename, config):
         header_content=None,  # No header for main videoplayer
         display_video_func=display_video_with_mode
     )
+
+    # "Action not recognized" acts as an immediate submit — save and advance
+    # without requiring a separate Submit button click (which would reset the flag).
+    if scale_values.get('_action_not_recognized', False):
+        if save_rating(user.user_id, action_id, scale_values):
+            st.session_state.current_video_index += 1
+            st.session_state.confirm_back = False
+            st.rerun()
+        else:
+            st.error("❌ Failed to save rating. Please try again.")
+        return
 
     st.markdown("---")
 
@@ -527,15 +648,13 @@ def _validate_ratings(scale_values):
 
 def show_completion_message():
     """Display message when all videos have been rated."""
-    st.title("🎉 All Done!")
+    config = st.session_state.get('config', {}) or {}
+    page_cfg = config.get('pages', {}).get('completion', {})
+    heading = page_cfg.get('heading', '🎉 All Done!')
+    body = page_cfg.get('body', 'Thank you for your participation!')
 
-    st.success("""
-    ### Thank you for your participation!
-
-    You have completed rating all available videos.
-
-    Your responses have been saved and will help us understand creativity assessment in soccer.
-    """)
+    st.title(heading)
+    st.success(body)
 
     st.markdown("---")
 

@@ -106,6 +106,13 @@ def save_rating(user_id, action_id, scale_values):
         key = title.lower().replace(' ', '_')
         rating_data[key] = value
 
+    # Attach device info fields if available
+    device_info = st.session_state.get('device_info', {})
+    if device_info:
+        for field in ['device_type', 'os', 'os_version', 'browser', 'browser_version', 'user_agent']:
+            if field in device_info:
+                rating_data[field] = device_info[field]
+
     # Get storage mode from config
     config = st.session_state.get('config', {})
     storage_mode = config.get('settings', {}).get('storage_mode', 'both')

@@ -6,33 +6,9 @@ import streamlit as st
 
 def show():
     """Display the pre-familiarization instructions screen."""
-    st.markdown("""
-    ### Welcome to the Emotion Recognition Survey!
-    
-    #### Please read the following instructions carefully!
-
-    You will be shown a series of images and videos of athletes, each for 2 seconds, after which you have to answer 2 simple questions:
-    """)
-
-    st.info("""
-    1. What emotions are being shown by the athlete you just saw? You have to select the **appropriate emotions** from the given options:
-
-            Angry, Happy, Sad, Scared, Surprised, Disgusted, Contempt/Hate/Disdain, and Neutral.
-""")
-    
-    st.info("""
-    2. Did the athlete **win or lose** the match/contest?
-""")
-
-    st.markdown("""        
-    For each clip in the survey, please indicate whether the athlete won or lost, and rate the emotions you observe. You can pick multiple emotions (as many as you need). Each emotion is rated independently on a 0 to 100 scale. Each of these emotions has to be rated separately.
-
-    Neutral emotion is used when you do not see any specific emotions at all. It is used when the other mentioned emotions are absent. 
-
-    Thus, Neutral would be 0 if other emotions are present, and 100 if no other emotions are visible or present according to you. 
-
-    Now, if you have understood these instructions, we will have 3 practice clips, followed by a message, after which your survey will begin. Please press start below, to begin your practice trial.
-    """)
+    config = st.session_state.get('config', {}) or {}
+    body = config.get('pages', {}).get('pre_familiarization', {}).get('body', '')
+    st.markdown(body)
 
     st.markdown("---")
 

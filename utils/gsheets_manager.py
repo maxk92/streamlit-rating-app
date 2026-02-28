@@ -3,34 +3,13 @@ Google Sheets manager for data persistence.
 Handles connections and write operations to Google Sheets.
 """
 import streamlit as st
-from streamlit_gsheets import GSheetsConnection
 import pandas as pd
 from datetime import datetime
 import gspread
 from google.oauth2.service_account import Credentials
 
 # Global connection cache
-_gsheets_connection = None
 _gspread_client = None
-
-def get_gsheets_connection():
-    """
-    Get or create a cached Google Sheets connection.
-
-    Returns:
-        GSheetsConnection object or None if connection fails
-    """
-    global _gsheets_connection
-
-    if _gsheets_connection is None:
-        try:
-            _gsheets_connection = st.connection("gsheets", type=GSheetsConnection)
-            print("[INFO] Google Sheets connection established")
-        except Exception as e:
-            print(f"[ERROR] Failed to create Google Sheets connection: {e}")
-            return None
-
-    return _gsheets_connection
 
 
 def get_gspread_client():
@@ -168,11 +147,15 @@ def read_ratings_from_gsheets(worksheet="ratings"):
         DataFrame with all ratings, or empty DataFrame if failed
     """
     try:
-        conn = get_gsheets_connection()
-        if conn is None:
+        client = get_gspread_client()
+        if client is None:
             return pd.DataFrame()
 
-        df = conn.read(worksheet=worksheet)
+        spreadsheet_url = st.secrets["connections"]["gsheets"]["spreadsheet"]
+        spreadsheet = client.open_by_url(spreadsheet_url)
+        ws = spreadsheet.worksheet(worksheet)
+        data = ws.get_all_records()
+        df = pd.DataFrame(data)
         print(f"[INFO] Read {len(df)} ratings from Google Sheets")
         return df
 
@@ -305,11 +288,15 @@ def read_users_from_gsheets(worksheet="users"):
         DataFrame with all users, or empty DataFrame if failed
     """
     try:
-        conn = get_gsheets_connection()
-        if conn is None:
+        client = get_gspread_client()
+        if client is None:
             return pd.DataFrame()
 
-        df = conn.read(worksheet=worksheet)
+        spreadsheet_url = st.secrets["connections"]["gsheets"]["spreadsheet"]
+        spreadsheet = client.open_by_url(spreadsheet_url)
+        ws = spreadsheet.worksheet(worksheet)
+        data = ws.get_all_records()
+        df = pd.DataFrame(data)
         print(f"[INFO] Read {len(df)} users from Google Sheets")
         return df
 

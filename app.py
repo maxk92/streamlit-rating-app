@@ -14,10 +14,18 @@ sys.path.append(os.path.join(os.path.dirname(__file__), 'utils'))
 from utils.user import User
 from utils.config_loader import load_config
 
-# Page configuration
+# Load config early so st.set_page_config() can use it
+# (must be called before any other st.* calls)
+_early_config = {}
+try:
+    _early_config = load_config() or {}
+except Exception:
+    pass
+_app_cfg = _early_config.get('app', {})
+
 st.set_page_config(
-    page_title="Decoding Emotions App",
-    page_icon="",
+    page_title=_app_cfg.get('title', 'Rating App'),
+    page_icon=_app_cfg.get('icon', ''),
     layout="wide",
     initial_sidebar_state="collapsed"
 )
@@ -38,20 +46,40 @@ st.markdown(
 )
 
 # Initialize session state
+def get_starting_page(config):
+    """Determine the first page to show based on skip settings in config."""
+    settings = (config or {}).get('settings', {})
+    if not settings.get('skip_welcome', False):
+        return 'welcome'
+    if not settings.get('skip_login', False):
+        return 'login'
+    if not settings.get('skip_consent', False):
+        return 'consent'
+    if not settings.get('skip_questionnaire', False):
+        return 'questionnaire'
+    if settings.get('enable_familiarization', True):
+        return 'pre_familiarization'
+    return 'videoplayer'
+
+
 def init_session_state():
     """Initialize session state variables if not already set."""
     if 'user' not in st.session_state:
         st.session_state.user = User()
 
-    if 'page' not in st.session_state:
-        st.session_state.page = 'welcome'
-
     if 'config' not in st.session_state:
-        try:
-            st.session_state.config = load_config()
-        except Exception as e:
-            st.error(f"Failed to load configuration: {e}")
-            st.session_state.config = None
+        st.session_state.config = _early_config if _early_config else None
+        if not st.session_state.config:
+            st.error("Failed to load configuration. Please check config/config.yaml.")
+
+    if 'page' not in st.session_state:
+        st.session_state.page = get_starting_page(st.session_state.config)
+
+    # Pre-set consent when consent page is skipped
+    if 'consent_given' not in st.session_state:
+        settings = (st.session_state.config or {}).get('settings', {})
+        if settings.get('skip_consent', False):
+            st.session_state.consent_given = True
 
     if 'user_id_confirmed' not in st.session_state:
         st.session_state.user_id_confirmed = False
@@ -64,6 +92,12 @@ def navigate_to(page_name):
 
 # Initialize
 init_session_state()
+
+# Trigger device detection once per session.
+# Placed here (before any page content) so the single JS eval iframe renders
+# at the top of the app on first load rather than inside a specific page.
+from utils.device_detection import get_device_info_cached
+get_device_info_cached()
 
 # Display current page based on session state
 current_page = st.session_state.page
