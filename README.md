@@ -1,205 +1,198 @@
-# Creativity Rating App - Streamlit Version
+# Streamlit Rating App
 
-A web-based application for collecting subjective ratings of soccer actions from video clips. This is a Streamlit port of the original Kivy desktop application, designed to be deployable as a web app.
+A web application for collecting subjective ratings of video clips. Participants watch short video clips and rate them on configurable dimensions. Built with Streamlit; supports local and Google Sheets/Drive storage.
 
-## Features
-
-- **Multi-page navigation**: Welcome → Login → Questionnaire → Video Rating
-- **Dynamic form generation**: Questionnaire and rating scales are fully configurable via YAML files
-- **User ID system**: Anonymous user identification based on demographic data
-- **Video playback**: Stream videos with optional metadata and pitch visualization
-- **Data persistence**: Automatic saving of user data and ratings to JSON files
-- **CSV export**: Export all data to CSV format with statistics
+---
 
 ## Installation
 
-1. **Clone or navigate to this directory**
-
-2. **Create a virtual environment** (recommended):
-   ```bash
-   python3 -m venv venv
-   source venv/bin/activate  # On Windows: venv\Scripts\activate
-   ```
-
-3. **Install dependencies**:
-   ```bash
-   pip install -r requirements.txt
-   ```
-
-4. **Configure the application**:
-   - Edit `config/config.yaml` to set paths to your database and videos
-   - Edit `config/questionnaire_fields.yaml` to customize the questionnaire
-   - Edit `config/rating_scales.yaml` to customize rating scales
-
-## Running the Application
-
-### Local Development
+Requires Python ≥ 3.11 and [uv](https://docs.astral.sh/uv/).
 
 ```bash
-streamlit run app.py
+git clone <repo-url>
+cd 4_streamlit-rating-app
+uv sync                  # creates .venv and installs all dependencies
 ```
 
-The app will open in your browser at `http://localhost:8501`
-
-### Production Deployment
-
-For deploying to Streamlit Cloud or other hosting platforms:
-
-1. **Streamlit Cloud**:
-   - Push this repository to GitHub
-   - Connect your GitHub repo to Streamlit Cloud
-   - Set the main file path to `app.py`
-   - Configure secrets and environment variables as needed
-
-2. **Other platforms** (Docker, Heroku, etc.):
-   - Ensure `requirements.txt` is properly configured
-   - Set up environment variables for paths
-   - Use `streamlit run app.py` as the startup command
+---
 
 ## Configuration
 
-### Main Configuration (`config/config.yaml`)
+All behaviour is driven by YAML files in `config/`. No code changes are needed for typical study customisation.
+
+### `config/config.yaml`
 
 ```yaml
+app:
+  title: "My Rating App"   # browser tab title
+  icon: ""                 # emoji or leave empty
+
 paths:
-  metadata_path: "/path/to/metadata.duckdb"  # DuckDB database or CSV file with event metadata
-  video_path: "/path/to/videos/"             # Directory containing .mp4 files
+  metadata_path: "data/events.duckdb"   # DuckDB (.duckdb) or CSV (.csv)
+
+  # Video source: "local" or "gdrive"
+  video_source: "local"
+  video_path: "data/videos/"            # used when video_source = "local"
+  familiarization_video_path: "data/videos_familiarization/"
 
 settings:
-  min_ratings_per_video: 2  # Stop showing videos after N ratings collected
+  min_ratings_per_video: 2   # stop showing a video once it has this many ratings
+
+  # --- Files ---
   questionnaire_fields_file: "config/questionnaire_fields.yaml"
-  rating_scales_file: "config/rating_scales.yaml"
-  display_metadata: true  # Show metadata (team, player, type, etc.)
-  display_pitch: true  # Show pitch visualization
-  video_playback_mode: "loop"  # "loop" or "once"
-    # - "loop": Video autoplays, repeats automatically, controls visible
-    # - "once": Video autoplays once, no controls, cannot be replayed
+  rating_scales_file:        "config/rating_scales.yaml"
+  page_texts_file:           "config/page_texts.yaml"
+
+  # --- Rating interface layout ---
+  # "combined"  — video and rating scales on one screen (default)
+  # "separate"  — first screen shows video only, second screen shows scales
+  display_mode: "combined"
+
+  # --- Video display ---
+  display_metadata: true        # show metadata bar above video
+  display_pitch: true           # show pitch visualisation next to video
+  video_playback_mode: "loop"   # "loop" = repeats with controls; "once" = plays once, no controls
+  video_player_height: 600      # iframe height in px (only used for "once" mode)
+  video_pitch_column_ratio: [55, 45]
+
+  # --- Metadata columns shown above video ---
+  metadata_to_show:
+    - { label: "Team",   column: "team" }
+    - { label: "Player", column: "player" }
+    - { label: "Type",   column: "type" }
+
+  # --- Rating interface ---
+  rating_section_heading: "Please rate the action on the following dimensions:"
+  show_action_not_recognized: true   # "Action not recognized" button; clicking it
+                                     # immediately saves the rating and advances
+
+  # --- Pitch visualisation ---
+  pitch_type: "statsbomb"
+  pitch_color: "grass"
+  pitch_arrow_color: "blue"
+
+  # --- Familiarization (practice trials before the main task) ---
+  enable_familiarization: false   # set true to show 3 practice videos first
+
+  # --- Video selection ---
+  number_of_videos: null   # max videos per session (null = all available)
+
+  # Stratified sampling (optional; leave commented for simple random sampling)
+  # variables_for_stratification:
+  #   - variable: "outcome"
+  #     levels: ["Win", "Loss"]
+  #     proportions: [0.5, 0.5]   # must sum to 1.0
+
+  # --- Skip pages (useful during development) ---
+  skip_welcome:      false
+  skip_login:        false
+  skip_consent:      false
+  skip_questionnaire: false
+
+  # --- Storage ---
+  # "local"  — JSON files in user_data/ and user_ratings/
+  # "online" — Google Sheets + Google Drive (requires secrets.toml)
+  # "both"   — write to all locations
+  storage_mode: "local"
 ```
 
-### Questionnaire Fields (`config/questionnaire_fields.yaml`)
+**Google Drive / Sheets** (when `video_source: "gdrive"` or `storage_mode: "online"`): add credentials to `.streamlit/secrets.toml`. See [Streamlit secrets docs](https://docs.streamlit.io/deploy/streamlit-community-cloud/deploy-your-app/secrets-management).
 
-Define demographic and experience fields:
-- `type`: "multiple_choice", "text", or "numeric"
-- `active`: true/false to enable/disable fields
-- `required_to_proceed`: true/false for mandatory fields
+---
 
-### Rating Scales (`config/rating_scales.yaml`)
+### `config/questionnaire_fields.yaml`
 
-Define rating dimensions:
-- `type`: "discrete", "slider", or "text"
-- `active`: true/false to enable/disable scales
-- `required_to_proceed`: true/false for mandatory scales
-
-## Directory Structure
-
-```
-streamlit-creativity-app/
-├── app.py                    # Main application file
-├── pages/                    # Page modules
-│   ├── welcome.py           # Welcome screen
-│   ├── login.py             # Login/returning user screen
-│   ├── questionnaire.py     # Demographic questionnaire
-│   └── videoplayer.py       # Video rating interface
-├── utils/                    # Utility modules
-│   ├── user.py              # User class
-│   ├── config_loader.py     # Configuration loading
-│   ├── data_persistence.py  # Data saving/loading
-│   └── export_to_csv.py     # CSV export functionality
-├── config/                   # Configuration files
-│   ├── config.yaml
-│   ├── questionnaire_fields.yaml
-│   └── rating_scales.yaml
-├── user_data/               # Saved user demographics (JSON)
-├── user_ratings/            # Saved ratings (JSON)
-├── output/                  # CSV exports
-├── backup/                  # Auto-backup of JSON files
-└── requirements.txt         # Python dependencies
-```
-
-## Key Differences from Kivy Version
-
-### Advantages
-- **Web-based**: No installation required for users
-- **Cross-platform**: Works on any device with a browser
-- **Easier deployment**: Can be hosted on cloud platforms
-- **Simpler code**: Streamlit handles UI rendering automatically
-
-### Limitations
-- **No offline mode**: Requires internet connection (unless self-hosted)
-- **Session-based**: Users must complete in one session or remember their User ID
-- **Less keyboard control**: Mouse/touch interaction only
-
-## Data Management
-
-### Saving Data
-
-- **User data**: Saved to `user_data/{user_id}.json` after questionnaire
-- **Ratings**: Saved to `user_ratings/{user_id}_{action_id}.json` after each video
-
-### Exporting Data
-
-Run the export script manually:
-```bash
-python utils/export_to_csv.py
-```
-
-Or use the "Export Data" button in the app when all videos are rated.
-
-Exports create:
-- `output/ratings.csv` - All individual ratings
-- `output/mean_ratings.csv` - Aggregated statistics per action
-- `output/users.csv` - All user demographics
-- `output/rating_log.txt` - Summary statistics
-- `backup/` - Copies of all JSON files
-
-## Customization
-
-### Adding New Questionnaire Fields
-
-Edit `config/questionnaire_fields.yaml`:
+Each field shown to participants before the rating task:
 
 ```yaml
 - active: true
-  type: "multiple_choice"  # or "text" or "numeric"
-  field_name: "new_field"
-  title: "Question text"
-  options: ["Option 1", "Option 2"]  # for multiple_choice only
-```
-
-### Adding New Rating Scales
-
-Edit `config/rating_scales.yaml`:
-
-```yaml
-- active: true
-  type: "discrete"  # or "slider" or "text"
-  title: "New Scale"
-  label_low: "low end label"
-  label_high: "high end label"
-  values: [1, 2, 3, 4, 5]  # for discrete only
+  type: "multiple_choice"   # or "text" / "numeric"
+  field_name: "experience"
+  title: "How many years have you watched football?"
+  options: ["< 1", "1–5", "5–10", "> 10"]
   required_to_proceed: true
+  required_for_user_id: false   # set true to include in anonymous ID generation
 ```
 
-## Troubleshooting
+Set `active: false` to hide a field without deleting it.
 
-### Videos not loading
-- Check that `video_path` in `config.yaml` is correct
-- Ensure video files are .mp4 format
-- Verify file permissions
+---
 
-### Metadata loading errors
-- Check that `metadata_path` in `config.yaml` points to valid DuckDB (.duckdb) or CSV (.csv) file
-- For DuckDB: Ensure database has `events` table with required columns
-- For CSV: Ensure file has an `id` column matching video filenames (without .mp4)
+### `config/rating_scales.yaml`
 
-### Configuration errors
-- Validate YAML syntax using an online validator
-- Ensure all required fields are present in config files
+Each scale shown per video. Three types:
 
-## Credits
+```yaml
+# Discrete (pill buttons)
+- active: true
+  type: "discrete"
+  title: "Creativity"
+  label_low: "not creative"
+  label_high: "very creative"
+  values: [1, 2, 3, 4, 5, 6, 7]
+  required_to_proceed: true
 
-Adapted from the Kivy-based Creativity Rating App for desktop environments.
+# Slider
+- active: true
+  type: "slider"
+  title: "Confidence"
+  label_low: "0 %"
+  label_high: "100 %"
+  slider_min: 0
+  slider_max: 100
+  initial_state: "low"   # "low" | "center" | "high"
+  required_to_proceed: false
 
-## License
+# Free text
+- active: false
+  type: "text"
+  title: "Comments"
+  required_to_proceed: false
+```
 
-[Your license here]
+**Groups** — require a minimum number of ratings from a set of scales before proceeding:
+
+```yaml
+groups:
+  - id: "emotions"
+    title: "Emotion Ratings"
+    number_of_ratings: 3
+    error_msg: "Please rate at least 3 emotions before continuing."
+
+# Then on each scale in the group:
+- active: true
+  type: "discrete"
+  title: "Joy"
+  group: "emotions"
+  required_to_proceed: false
+```
+
+---
+
+### `config/page_texts.yaml`
+
+Optional — override the text shown on welcome, consent, pre/post-familiarization, and completion pages. If the file is absent, built-in defaults are used.
+
+---
+
+## Running the App
+
+```bash
+uv run streamlit run app.py
+```
+
+Opens at `http://localhost:8501`.
+
+---
+
+## Data
+
+Ratings are saved to `user_ratings/{user_id}_{action_id}.json`. Each file includes the scale values, an `action_not_recognized` flag, and device info (`device_type`, `os`, `browser`, `browser_version`, `user_agent`) captured automatically from the participant's browser.
+
+Export all ratings to CSV:
+
+```bash
+uv run python utils/export_to_csv.py
+```
+
+Output is written to `output/`.
